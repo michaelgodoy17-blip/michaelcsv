@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Michael - CSV -> </title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; padding: 20px; }
+        
+        /* Container do Topo (Controles) */
+        .controls-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .file-group h2 { margin: 0 0 10px 0; font-size: 1.2rem; }
+        
+        /* Botão de Download Bonito */
+        .btn-download {
+            background-color: #217346; /* Cor verde do Excel */
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 0.5;
+            pointer-events: none; /* Desabilitado até carregar arquivo */
+            transition: all 0.3s;
+        }
+
+        .btn-download.active { opacity: 1; pointer-events: all; }
+        .btn-download:hover { background-color: #1e6b40; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+
+        /* Tabela */
+        .table-wrapper {
+            overflow: auto;
+            max-height: 75vh;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        table { border-collapse: collapse; width: 100%; white-space: nowrap; font-size: 14px; }
+        th, td { border: 1px solid #e0e0e0; padding: 8px 12px; text-align: left; }
+        
+        thead { position: sticky; top: 0; z-index: 5; background-color: #f8f9fa; }
+        th { background-color: #f8f9fa; color: #333; font-weight: 600; border-bottom: 2px solid #ccc; }
+        
+        .filter-input { width: 90%; padding: 4px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .row-number {
+            background-color: #f8f9fa; text-align: center; font-weight: bold; color: #666;
+            width: 40px; position: sticky; left: 0; z-index: 2; border-right: 2px solid #ccc;
+        }
+        thead .row-number { z-index: 10; }
+        tbody tr:hover { background-color: #f1f8e9; }
+    </style>
+</head>
+<body>
+
+    <div class="controls-container">
+        <div class="file-group">
+            <h2>📂 1. Carregar CSV</h2>
+            <input type="file" id="csvFileInput" accept=".csv">
+        </div>
+        
+        <div>
+            <button id="downloadBtn" class="btn-download" onclick="downloadExcel()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                Baixar em Excel (.xlsx)
+            </button>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table id="csvTable"></table>
+    </div>
+
+    <script>
+        let tableData = []; 
+        let headers = [];
+
+        // 1. Leitura do Arquivo
+        document.getElementById('csvFileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                Papa.parse(file, {
+                    header: false,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        tableData = results.data;
+                        if(tableData.length > 0) {
+                            headers = tableData[0]; // Salva o cabeçalho original
+                            renderTable(tableData);
+                            // Ativa o botão de download
+                            document.getElementById('downloadBtn').classList.add('active');
+                        }
+                    },
+                    error: function(error) { alert("Erro ao ler CSV"); }
+                });
+            }
+        });
+
+        // 2. Renderização da Tabela
+        function renderTable(data) {
+            const table = document.getElementById('csvTable');
+            table.innerHTML = '';
+            if (data.length === 0) return;
+
+            const thead = document.createElement('thead');
+            
+            // Linha de Títulos
+            const titleRow = document.createElement('tr');
+            titleRow.innerHTML = '<th class="row-number">#</th>'; // Célula de índice
+            data[0].forEach(text => {
+                const th = document.createElement('th');
+                th.innerText = text;
+                titleRow.appendChild(th);
+            });
+            thead.appendChild(titleRow);
+
+            // Linha de Filtros
+            const filterRow = document.createElement('tr');
+            filterRow.innerHTML = '<th class="row-number"></th>'; // Célula vazia índice
+            data[0].forEach((_, index) => {
+                const th = document.createElement('th');
+                th.innerHTML = <input type="text" class="filter-input" data-col="${index}" placeholder="Filtrar..." onkeyup="filterTable()">;
+                filterRow.appendChild(th);
+            });
+            thead.appendChild(filterRow);
+            table.appendChild(thead);
+
+            // Corpo da Tabela
+            const tbody = document.createElement('tbody');
+            for (let i = 1; i < data.length; i++) {
+                const row = document.createElement('tr');
+                row.innerHTML = <td class="row-number">${i}</td>;
+                data[i].forEach(text => {
+                    const td = document.createElement('td');
+                    td.innerText = text;
+                    row.appendChild(td);
+                });
+                tbody.appendChild(row);
+            }
+            table.appendChild(tbody);
+        }
+
+        // 3. Filtro Lógico
+        function filterTable() {
+            const inputs = document.querySelectorAll('.filter-input');
+            const rows = document.querySelectorAll('#csvTable tbody tr');
+
+            rows.forEach(row => {
+                let show = true;
+                const cells = row.querySelectorAll('td');
+                
+                inputs.forEach(input => {
+                    const colIndex = parseInt(input.getAttribute('data-col')) + 1; // +1 devido à coluna #
+                    const filterText = input.value.toLowerCase();
+                    if (filterText && cells[colIndex]) {
+                        if (!cells[colIndex].innerText.toLowerCase().includes(filterText)) {
+                            show = false;
+                        }
+                    }
+                });
+                row.style.display = show ? '' : 'none';
+            });
+        }
+
+        // 4. Função de Download Excel (Inteligente)
+        function downloadExcel() {
+            // Cria um novo array de dados baseado APENAS no que está visível
+            const rows = document.querySelectorAll('#csvTable tbody tr');
+            const exportData = [];
+
+            // Adiciona o cabeçalho original
+            exportData.push(headers);
+
+            // Adiciona as linhas visíveis
+            rows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const rowData = [];
+                    // Pula a primeira célula (índice #) e pega o resto
+                    const cells = row.querySelectorAll('td');
+                    for(let i = 1; i < cells.length; i++) {
+                        rowData.push(cells[i].innerText);
+                    }
+                    exportData.push(rowData);
+                }
+            });
+
+            // Cria a planilha usando SheetJS
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(exportData);
+
+            XLSX.utils.book_append_sheet(wb, ws, "Dados Filtrados");
+
+            // Gera o arquivo e força o download
+            XLSX.writeFile(wb, "Planilha_Exportada.xlsx");
+        }
+    </script>
+</body>
+</html>
